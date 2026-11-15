@@ -123,16 +123,23 @@ function solve(b,limit=1,random=false){let count=0,first=null;function rec(){let
 function generate(level){let full=solve(Array(81).fill(0),1,true).first;let b=[...full],target={easy:40,medium:33,hard:27,expert:23}[level];for(let i of shuffle([...Array(81).keys()])){if(b.filter(Boolean).length<=target)break;let old=b[i];b[i]=0;if(solve([...b],2).count!==1)b[i]=old}return {b,full}}
 function reduceBoxSingles(){
  if(!autoNotes)return;
+ // Evaluate all box-only positions from the unchanged board, before editing notes.
+ // Never let a later digit overwrite an earlier forced digit in the same cell.
+ const forced=Array.from({length:81},()=>new Set());
  for(let br=0;br<3;br++)for(let bc=0;bc<3;bc++){
    const cells=[];
    for(let r=br*3;r<br*3+3;r++)for(let col=bc*3;col<bc*3+3;col++)cells.push(r*9+col);
    for(let n=1;n<=9;n++){
      if(cells.some(i=>values[i]===n))continue;
      const possible=cells.filter(i=>!values[i]&&candidates(values,i).includes(n));
-     if(possible.length!==1)continue;
-     const i=possible[0];
-     if((notes[i]||[]).includes(n))notes[i]=[n];
+     if(possible.length===1)forced[possible[0]].add(n);
    }
+ }
+ for(let i=0;i<81;i++){
+   if(values[i]||forced[i].size!==1)continue;
+   const n=[...forced[i]][0];
+   // Keep all legal candidates when manual exclusions or another rule disagree.
+   if((notes[i]||[]).includes(n))notes[i]=[n];
  }
 }
 function syncAutoNotes(){
