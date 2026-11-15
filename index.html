@@ -161,40 +161,38 @@ function removeCandidate(i,n){if(i<0||i>=81||values[i]||n<1||n>9)return;const a=
 // 3x3 box lie entirely in one row/column, remove it from that line outside box.
 // Also apply claiming: a row/column confined to one box eliminates other box cells.
 function refineCandidateNotes(silent=false){
-  
-  const before=notes.map(a=>[...a]);
-  // Rebuild all currently legal candidates, including accidentally missing marks.
-  // The refinement mode deliberately overrides manual exclusions.
-  const work=values.map((v,i)=>v?new Set():new Set((notes[i]||[]).filter(n=>candidates(values,i).includes(n))));
-  const boxes=Array.from({length:9},(_,b)=>Array.from({length:9},(_,k)=>(Math.floor(b/3)*3+Math.floor(k/3))*9+(b%3)*3+k%3));
-  const rows=Array.from({length:9},(_,r)=>Array.from({length:9},(_,k)=>r*9+k));
-  const cols=Array.from({length:9},(_,col)=>Array.from({length:9},(_,r)=>r*9+col));
-  let changed=true,rounds=0;
-  while(changed&&rounds++<20){
-    changed=false;
-    const groups=[...boxes,...rows,...cols];
-    for(let g=0;g<groups.length;g++){
-      const unit=groups[g],kind=g<9?'box':g<18?'row':'col';
-      for(let n=1;n<=9;n++){
-        if(unit.some(i=>values[i]===n))continue;
-        const places=unit.filter(i=>work[i].has(n));
-        if(places.length<2)continue;
-        const targetUnits=kind==='box'?[rows[Math.floor(places[0]/9)],cols[places[0]%9]]:kind==='row'?boxes.filter(b=>b.includes(places[0])):boxes.filter(b=>b.includes(places[0]));
-        for(const target of targetUnits){
-          if(!places.every(i=>target.includes(i)))continue;
-          for(const i of target)if(!unit.includes(i)&&work[i].delete(n))changed=true;
-        }
-      }
-    }
+ // Derive deductions from the actual board, never from already reduced pencil marks.
+ // A removed mark must not become evidence for removing another mark.
+ const before=notes.map(a=>[...a]);
+ const legal=values.map((v,i)=>v?new Set():new Set(candidates(values,i)));
+ const boxes=Array.from({length:9},(_,b)=>Array.from({length:9},(_,k)=>(Math.floor(b/3)*3+Math.floor(k/3))*9+(b%3)*3+k%3));
+ const rows=Array.from({length:9},(_,r)=>Array.from({length:9},(_,k)=>r*9+k));
+ const cols=Array.from({length:9},(_,c)=>Array.from({length:9},(_,r)=>r*9+c));
+ const removals=Array.from({length:81},()=>new Set());
+ for(const [kind,units] of [['box',boxes],['row',rows],['col',cols]]){
+  for(const unit of units)for(let n=1;n<=9;n++){
+   if(unit.some(i=>values[i]===n))continue;
+   const places=unit.filter(i=>legal[i].has(n));
+   if(places.length<2)continue;
+   const targets=kind==='box'?[rows[Math.floor(places[0]/9)],cols[places[0]%9]]:[boxes[Math.floor(Math.floor(places[0]/9)/3)*3+Math.floor((places[0]%9)/3)]];
+   for(const target of targets){
+    if(!places.every(i=>target.includes(i)))continue;
+    for(const i of target)if(!unit.includes(i)&&legal[i].has(n))removals[i].add(n);
+   }
   }
-  let removed=0;
-  for(let i=0;i<81;i++){
-    removed+=before[i].filter(n=>!work[i].has(n)).length;
-    notes[i]=[...work[i]].sort((a,b)=>a-b);
-  }
-  if(silent)return;
-  render();save();
-  $('status').textContent=({fi:'Merkintöjä poistettu: '+removed,hu:'Jelölések törölve: '+removed,en:'Marks removed: '+removed})[lang];
+ }
+ let removed=0;
+ for(let i=0;i<81;i++){
+  const next=before[i].filter(n=>legal[i].has(n)&&!removals[i].has(n));
+  // Never silently turn a nonempty candidate cell into an impossible empty one.
+  notes[i]=!values[i]&&before[i].length&&next.length===0
+   ?before[i].filter(n=>legal[i].has(n))
+   :next;
+  removed+=before[i].filter(n=>!notes[i].includes(n)).length;
+ }
+ if(silent)return;
+ render();save();
+ $('status').textContent=({fi:'Merkintöjä poistettu: '+removed,hu:'Jelölések törölve: '+removed,en:'Marks removed: '+removed})[lang];
 }
 function snapshot(){return {values:[...values],notes:notes.map(x=>[...x])}}function restore(s){values=[...s.values];notes=s.notes.map(x=>[...x]);syncAutoNotes();render();save()}
 function change(i,n){if(i<0||puzzle[i])return;
